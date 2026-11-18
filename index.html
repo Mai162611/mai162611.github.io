@@ -50,39 +50,60 @@
 </div>
 
 <script>
-  // Direccion del bot. Si el bot esta vivo, el mismo le confirma su
-  // direccion actual y la pagina se memoriza sola.
-  let base = localStorage.getItem('sinac_tunel') || 'https://duncan-certain-neck-appliances.trycloudflare.com';
+  // Direccion del bot. Se recuerda la ultima que funciono y, si deja de
+  // responder (el tunel gratuito cambia cada cierto tiempo), se prueba la
+  // direccion de respaldo: asi la pagina no se queda "roja" para siempre.
+  const RESPALDO = 'https://town-dan-apt-popular.trycloudflare.com';
+  let base = localStorage.getItem('sinac_tunel') || RESPALDO;
 
   function chipSet(clase, texto) {
     const chip = document.getElementById('chip');
     chip.className = 'estado ' + clase;
     chip.textContent = texto;
   }
-  async function refrescar() {
+
+  async function pedirEstado(url) {
+    const control = new AbortController();
+    const reloj = setTimeout(() => control.abort(), 6000);
     try {
-      const r = await fetch(base + '/estado');
-      const e = await r.json();
-      if (e.tunel && e.tunel !== base) {
-        base = e.tunel;
-        localStorage.setItem('sinac_tunel', base);
-      }
-      if (e.estado === 'conectado') {
-        chipSet('verde', '🟢 Bot en línea' + (e.numero ? ' — ' + e.numero : ''));
-        document.getElementById('btn').textContent = '🔄 Regenerar QR';
-      } else if (e.estado === 'esperando_qr') {
-        chipSet('amarillo', '🟡 Esperando escaneo');
-      } else {
-        chipSet('gris', '… ' + e.estado);
-      }
-      const hayQr = !!e.qrDataUrl;
-      document.getElementById('qr').innerHTML = hayQr ? '<img src="' + e.qrDataUrl + '" alt="QR">' : '';
-      document.getElementById('aviso').classList.toggle('oculto', !hayQr);
-    } catch {
-      chipSet('gris', '🔴 Sin conexión con el bot');
-      document.getElementById('qr').innerHTML = '';
-      document.getElementById('aviso').classList.add('oculto');
+      const r = await fetch(url + '/estado', { signal: control.signal, cache: 'no-store' });
+      return await r.json();
+    } finally {
+      clearTimeout(reloj);
     }
+  }
+
+  function sinConexion() {
+    chipSet('gris', '🔴 Sin conexión con el bot');
+    document.getElementById('qr').innerHTML = '';
+    document.getElementById('aviso').classList.add('oculto');
+  }
+
+  async function refrescar() {
+    let e = null;
+    try {
+      e = await pedirEstado(base);
+    } catch {
+      if (base !== RESPALDO) {
+        try { e = await pedirEstado(RESPALDO); base = RESPALDO; } catch { e = null; }
+      }
+    }
+    if (!e) { sinConexion(); return; }
+
+    if (e.tunel) base = e.tunel;
+    localStorage.setItem('sinac_tunel', base);
+
+    if (e.estado === 'conectado') {
+      chipSet('verde', '🟢 Bot en línea' + (e.numero ? ' — ' + e.numero : ''));
+      document.getElementById('btn').textContent = '🔄 Regenerar QR';
+    } else if (e.estado === 'esperando_qr') {
+      chipSet('amarillo', '🟡 Esperando escaneo');
+    } else {
+      chipSet('gris', '… ' + e.estado);
+    }
+    const hayQr = !!e.qrDataUrl;
+    document.getElementById('qr').innerHTML = hayQr ? '<img src="' + e.qrDataUrl + '" alt="QR">' : '';
+    document.getElementById('aviso').classList.toggle('oculto', !hayQr);
   }
 
   async function regenerar() {
