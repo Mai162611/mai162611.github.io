@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Asistente de Soporte SINAC</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family:'Segoe UI',Arial,sans-serif; background:linear-gradient(160deg,#0b1f16 0%,#123527 100%);
+         min-height:100vh; color:#eaf5ef; padding:24px; }
+  .tarjeta { background:#123527; max-width:460px; width:100%; margin:0 auto; padding:36px 28px;
+             border-radius:20px; box-shadow:0 10px 40px rgba(0,0,0,.5); text-align:center; }
+  .logo { font-size:42px; }
+  h1 { font-size:22px; margin:8px 0 4px; }
+  .sub { color:#9fc4ae; font-size:13px; margin-bottom:20px; }
+  .estado { display:inline-block; padding:8px 18px; border-radius:999px; font-size:14px;
+            font-weight:600; margin-bottom:18px; }
+  .verde { background:#1d7a4f; }
+  .amarillo { background:#b7791f; }
+  .gris { background:#555; }
+  #qr img { width:280px; height:280px; image-rendering:pixelated; background:#fff; border-radius:10px; }
+  .aviso { font-size:13px; color:#9fc4ae; margin-top:10px; line-height:1.5; }
+  button { margin-top:16px; width:100%; background:#c05621; color:#fff; border:0; padding:14px 18px;
+           border-radius:12px; font-size:15px; font-weight:600; cursor:pointer; }
+  button:hover { background:#9c4619; }
+  button:disabled { background:#555; cursor:default; }
+  .pie { margin-top:20px; font-size:11px; color:#6f9382; line-height:1.5; }
+  .oculto { display:none; }
+</style>
+</head>
+<body>
+<div class="tarjeta">
+  <div class="logo">🤖</div>
+  <h1>Asistente de Soporte SINAC</h1>
+  <div class="sub">Asistente virtual de soporte técnico por WhatsApp · 24/7</div>
+
+  <div id="chip" class="estado gris">Consultando…</div>
+  <div id="qr"></div>
+  <div id="aviso" class="aviso oculto">
+    Escanee el código con el celular del número del bot:<br>
+    <b>WhatsApp → Ajustes → Dispositivos vinculados → Vincular un dispositivo</b>
+  </div>
+
+  <button id="btn" onclick="regenerar()">🔄 Regenerar QR</button>
+
+  <div class="pie">
+    Proyecto de prácticas · SINAC (Sistema Nacional de Áreas de Conservación, Costa Rica)<br>
+    No es canal oficial de denuncias: para emergencias use 1192
+  </div>
+</div>
+
+<script>
+  // Direccion del bot. Si el bot esta vivo, el mismo le confirma su
+  // direccion actual y la pagina se memoriza sola.
+  let base = localStorage.getItem('sinac_tunel') || 'https://duncan-certain-neck-appliances.trycloudflare.com';
+
+  function chipSet(clase, texto) {
+    const chip = document.getElementById('chip');
+    chip.className = 'estado ' + clase;
+    chip.textContent = texto;
+  }
+  async function refrescar() {
+    try {
+      const r = await fetch(base + '/estado');
+      const e = await r.json();
+      if (e.tunel && e.tunel !== base) {
+        base = e.tunel;
+        localStorage.setItem('sinac_tunel', base);
+      }
+      if (e.estado === 'conectado') {
+        chipSet('verde', '🟢 Bot en línea' + (e.numero ? ' — ' + e.numero : ''));
+        document.getElementById('btn').textContent = '🔄 Regenerar QR';
+      } else if (e.estado === 'esperando_qr') {
+        chipSet('amarillo', '🟡 Esperando escaneo');
+      } else {
+        chipSet('gris', '… ' + e.estado);
+      }
+      const hayQr = !!e.qrDataUrl;
+      document.getElementById('qr').innerHTML = hayQr ? '<img src="' + e.qrDataUrl + '" alt="QR">' : '';
+      document.getElementById('aviso').classList.toggle('oculto', !hayQr);
+    } catch {
+      chipSet('gris', '🔴 Sin conexión con el bot');
+      document.getElementById('qr').innerHTML = '';
+      document.getElementById('aviso').classList.add('oculto');
+    }
+  }
+
+  async function regenerar() {
+    if (!confirm('Esto desvincula el número actual y genera un QR nuevo. ¿Continuar?')) return;
+    const btn = document.getElementById('btn');
+    btn.disabled = true;
+    btn.textContent = '⏳ Generando…';
+    try { await fetch(base + '/regenerar', { method: 'POST' }); } catch {}
+    setTimeout(() => { btn.disabled = false; refrescar(); }, 2000);
+  }
+
+  refrescar();
+  setInterval(refrescar, 3000);
+</script>
+</body>
+</html>
